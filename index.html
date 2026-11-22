@@ -85,7 +85,7 @@ input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px soli
 .food span{flex:1}
 .food em{font-style:normal;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
 .x{width:36px;height:36px;border-radius:18px;border:0;background:var(--soft);color:var(--mute);font-size:18px;cursor:pointer;flex:none}
-.addf{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:10px}
+.addf{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px;align-items:end}
 .btn{background:var(--hero);color:var(--heroink);border:0;border-radius:10px;min-height:44px;padding:0 16px;font:600 15px Figtree,sans-serif;cursor:pointer}
 .btn.ghost{background:var(--soft);color:var(--ink)}
 .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -331,7 +331,7 @@ function vToday(){
    ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
    <div class="meta" style="margin:12px 0 6px">Plan meals: tap to add</div>
    <div class="chips">${QUICK.map((q,i)=>`<button class="chip" data-qf="${i}">${q[0]}<small>${q[1]}/${q[2]}g</small></button>`).join('')}</div>
-   <form class="addf" id="addf"><input name="n" placeholder="Food" aria-label="Food name" required><input name="k" inputmode="numeric" placeholder="kcal" aria-label="Calories"><input name="p" inputmode="decimal" placeholder="protein g" aria-label="Protein grams"><button class="btn" style="grid-column:1/-1">Add food</button></form></section>`;
+   <form class="addf" id="addf"><input name="n" placeholder="Food" aria-label="Food name" required style="grid-column:1/-1"><label class="f">kJ<input name="kj" inputmode="decimal" aria-label="Energy in kilojoules"></label><label class="f">kcal<input name="k" inputmode="decimal" aria-label="Calories"></label><label class="f">Protein g<input name="p" inputmode="decimal" aria-label="Protein grams"></label><p class="meta" style="grid-column:1/-1;margin:0">Type kJ from an Australian label and kcal fills in (kJ ÷ 4.184), or the other way round.</p><button class="btn" style="grid-column:1/-1">Add food</button></form></section>`;
   // body
   h+=`<section class="card"><h2>Body &amp; recovery</h2><div class="g2">
    ${[['water','Water (L)','decimal'],['steps','Steps','numeric'],['sleep','Sleep (h)','decimal'],['bw','Bodyweight (kg)','decimal']].map(([k,l,m])=>`<label class="f">${l}<input inputmode="${m}" data-d="${k}" value="${esc(dd[k])}"></label>`).join('')}
@@ -440,6 +440,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const t=e.target,ds=t.dataset;
+  if(t.form&&t.form.id==='addf'&&(t.name==='kj'||t.name==='k')){const f=t.form,v=num(t.value);if(t.name==='kj')f.k.value=t.value.trim()?Math.round(v/4.184):'';else f.kj.value=t.value.trim()?Math.round(v*4.184):'';return}
   if(ds.ex){const d=day(cur),ex=d.ex||(d.ex={}),v=ex[ds.ex]||(ex[ds.ex]={});v[ds.f]=ds.f==='d'?t.checked:t.value;saveDay(cur);return}
   if(ds.chk!=null){const d=day(cur),c=d.chk||(d.chk={});c[ds.chk]=t.checked;saveDay(cur);return}
   if(ds.d){const d=day(cur);d[ds.d]=ds.d==='done'?t.checked:t.value;if(ds.d==='energy')$('#enl').textContent=t.value;saveDay(cur);return}
