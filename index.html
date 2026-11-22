@@ -120,6 +120,13 @@ th{color:var(--mute);font-weight:600;font-size:13px}
 .toast.show{opacity:1}
 .empty{color:var(--mute);font-size:15px}
 a{color:var(--goldink)}
+.scan{position:fixed;inset:0;background:var(--bg);z-index:20;overflow:auto;padding:calc(12px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom))}
+.scan[hidden]{display:none}
+.scanin{max-width:600px;margin:0 auto}
+.scanbox{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3;margin:12px 0}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;left:12%;right:12%;top:32%;bottom:32%;border:3px solid var(--gold);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.scanhead{display:flex;justify-content:space-between;align-items:center}
 @media(max-width:400px){.ring{width:124px;height:124px}.herogrid{gap:12px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -131,6 +138,13 @@ a{color:var(--goldink)}
   <button data-view="progress">12 weeks</button>
   <button data-view="setup">Setup</button>
 </nav>
+<div class="scan" id="scan" hidden><div class="scanin">
+  <div class="scanhead"><h2>Scan a barcode</h2><button class="x" data-act="scanclose" aria-label="Close scanner">×</button></div>
+  <div class="scanbox" id="scanbox"><video id="scanv" playsinline muted autoplay></video><div class="scanframe"></div></div>
+  <p id="scanmsg" class="meta">Point the camera at the barcode</p>
+  <form id="codef" class="row"><input name="c" inputmode="numeric" placeholder="Or type the barcode number" aria-label="Barcode number" style="flex:1"><button class="btn">Look up</button></form>
+  <div id="scanres"></div>
+</div></div>
 <div class="toast" id="toast"></div>
 <script>
 {
@@ -215,6 +229,7 @@ function save(id){
 }
 const saveDay=d=>save('d'+d);
 const saveSettings=()=>save('settings');
+function addMeal(m){(settings.meals||(settings.meals=[])).push(m);saveSettings()}
 
 /* ---------- calculations ---------- */
 function cycleLen(){
@@ -328,10 +343,13 @@ function vToday(){
   // food
   const t=foodTot(cur);
   h+=`<section class="card"><h2>Food</h2><div id="tots">${totsHTML(t,T)}</div>
-   ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}${f.src==='cron'?' <small class="meta">· Cronometer</small>':''}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
+   ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}${f.src==='cron'?' <small class="meta">· Cronometer</small>':''}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-savefood="${i}" aria-label="Save ${esc(f.n)} to My meals" title="Save to My meals">☆</button><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
+   ${(dd.food||[]).length>1?`<details style="margin-top:10px"><summary class="meta" style="cursor:pointer;min-height:32px">Save several of these as one meal</summary><form id="combf" style="margin-top:6px">${dd.food.map((f,i)=>`<label class="li"><input type="checkbox" class="tick" name="c" value="${i}"><span>${esc(f.n)}</span></label>`).join('')}<div class="row" style="margin-top:8px"><input name="n" placeholder="Meal name, e.g. Usual breakfast" aria-label="Meal name" required style="flex:1"><button class="btn">Save meal</button></div></form></details>`:''}
+   <button class="btn" data-act="scan" style="width:100%;margin-top:12px">Scan a barcode</button>
+   ${(settings.meals||[]).length?`<div class="meta" style="margin:12px 0 6px">My meals and snacks: tap to add</div><div class="chips">${settings.meals.map((m,i)=>`<button class="chip" data-mf="${i}">${esc(m.n)}<small>${Math.round(m.k)}/${Math.round(m.p)}g</small></button>`).join('')}</div>`:`<p class="meta" style="margin:12px 0 0">Tap ☆ on any food to save it to My meals, for one-tap logging next time.</p>`}
    <div class="meta" style="margin:12px 0 6px">Plan meals: tap to add</div>
    <div class="chips">${QUICK.map((q,i)=>`<button class="chip" data-qf="${i}">${q[0]}<small>${q[1]}/${q[2]}g</small></button>`).join('')}</div>
-   <form class="addf" id="addf"><input name="n" placeholder="Food" aria-label="Food name" required style="grid-column:1/-1"><label class="f">kJ<input name="kj" inputmode="decimal" aria-label="Energy in kilojoules"></label><label class="f">kcal<input name="k" inputmode="decimal" aria-label="Calories"></label><label class="f">Protein g<input name="p" inputmode="decimal" aria-label="Protein grams"></label><p class="meta" style="grid-column:1/-1;margin:0">Type kJ from an Australian label and kcal fills in (kJ ÷ 4.184), or the other way round.</p><button class="btn" style="grid-column:1/-1">Add food</button></form></section>`;
+   <form class="addf" id="addf"><input name="n" placeholder="Food" aria-label="Food name" required style="grid-column:1/-1"><label class="f">kJ<input name="kj" inputmode="decimal" aria-label="Energy in kilojoules"></label><label class="f">kcal<input name="k" inputmode="decimal" aria-label="Calories"></label><label class="f">Protein g<input name="p" inputmode="decimal" aria-label="Protein grams"></label><p class="meta" style="grid-column:1/-1;margin:0">Type kJ from an Australian label and kcal fills in (kJ ÷ 4.184), or the other way round.</p><label class="li" style="grid-column:1/-1;border:0;padding:0"><input type="checkbox" class="tick" name="sv"><span>Also save to My meals</span></label><button class="btn" style="grid-column:1/-1">Add food</button></form></section>`;
   // body
   h+=`<section class="card"><h2>Body &amp; recovery</h2><div class="g2">
    ${[['water','Water (L)','decimal'],['steps','Steps','numeric'],['sleep','Sleep (h)','decimal'],['bw','Bodyweight (kg)','decimal']].map(([k,l,m])=>`<label class="f">${l}<input inputmode="${m}" data-d="${k}" value="${esc(dd[k])}"></label>`).join('')}
@@ -407,6 +425,8 @@ function vSetup(){
    <h3 style="font-size:15px;margin:14px 0 6px">Period start dates</h3>
    ${[...settings.periods].sort().reverse().map(d=>`<div class="food"><span>${fmtDate(d,{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</span><button class="x" data-delp="${d}" aria-label="Remove ${d}">×</button></div>`).join('')||'<p class="empty">None yet.</p>'}
    <form class="row" id="addp" style="margin-top:10px"><input type="date" name="d" required style="flex:1" aria-label="Period start date"><button class="btn">Add</button></form></section>
+  <section class="card"><h2>My meals and snacks</h2>${(settings.meals||[]).map((m,i)=>`<div class="food"><span>${esc(m.n)}${m.items?`<br><small class="meta">${esc(m.items.join(', '))}</small>`:''}</span><em>${Math.round(m.k)} kcal · ${Math.round(m.p)} g</em><button class="x" data-delmeal="${i}" aria-label="Delete ${esc(m.n)}">×</button></div>`).join('')||'<p class="empty">None saved yet. On the Today screen, tap ☆ on a food, tick "Also save to My meals" when adding one, or combine several foods into a meal.</p>'}
+  ${Object.keys(settings.foods||{}).length?`<p class="meta" style="margin-bottom:0">${Object.keys(settings.foods).length} scanned products remembered for quick re-scanning.</p>`:''}</section>
   <section class="card"><h2>Import from Cronometer</h2>
   <p>On the Cronometer <b>website</b> (export isn't in its app), go to Settings &rarr; Account &rarr; Export Data, choose a date range, then <b>Export Servings</b> (each food) or <b>Daily Nutrition</b> (daily totals). Pick the downloaded file here.</p>
   <label class="btn ghost" style="display:inline-flex;align-items:center">Choose CSV file<input type="file" id="cronfile" accept=".csv,text/csv" style="display:none"></label>
@@ -436,6 +456,9 @@ document.addEventListener('click',e=>{
   if(ds.date){cur=ds.date;view='today';render();scrollTo(0,0);return}
   if(ds.sym){const d=day(cur),s=d.sym||(d.sym=[]),i=s.indexOf(ds.sym);i<0?s.push(ds.sym):s.splice(i,1);saveDay(cur);b.classList.toggle('on');return}
   if(ds.qf){const q=QUICK[+ds.qf],d=day(cur);(d.food||(d.food=[])).push({n:q[0],k:q[1],p:q[2]});saveDay(cur);render();toast('Added '+q[0]);return}
+  if(ds.savefood){const f=(day(cur).food||[])[+ds.savefood];if(f){const m={n:String(f.n).replace(/ · Cronometer$/,''),k:num(f.k),p:num(f.p)};if((settings.meals||[]).some(x=>x.n===m.n&&x.k===m.k)){toast('Already in My meals');return}addMeal(m);render();toast('Saved to My meals')}return}
+  if(ds.mf){const m=(settings.meals||[])[+ds.mf];if(m){const d=day(cur);(d.food||(d.food=[])).push({n:m.n,k:m.k,p:m.p});saveDay(cur);render();toast('Added '+m.n)}return}
+  if(ds.delmeal){settings.meals.splice(+ds.delmeal,1);saveSettings();render();return}
   if(ds.delfood){const d=day(cur);d.food.splice(+ds.delfood,1);saveDay(cur);render();return}
   if(ds.delp){settings.periods=settings.periods.filter(x=>x!==ds.delp);saveSettings();render();return}
   if(ds.act==='period'){const i=settings.periods.indexOf(cur);if(i<0){settings.periods.push(cur);toast('Period start logged')}else settings.periods.splice(i,1);saveSettings();render();return}
@@ -452,7 +475,8 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('submit',e=>{
   e.preventDefault();const f=e.target;
-  if(f.id==='addf'){const n=f.n.value.trim();if(!n)return;const d=day(cur);(d.food||(d.food=[])).push({n,k:num(f.k.value),p:num(f.p.value)});saveDay(cur);render();toast('Added '+n)}
+  if(f.id==='addf'){const n=f.n.value.trim();if(!n)return;const it={n,k:num(f.k.value),p:num(f.p.value)},d=day(cur);(d.food||(d.food=[])).push(it);if(f.sv.checked)addMeal(it);saveDay(cur);render();toast('Added '+n+(f.sv.checked?' and saved to My meals':''))}
+  if(f.id==='combf'){const idx=[...f.querySelectorAll('[name=c]:checked')].map(x=>+x.value),fd=day(cur).food||[];if(idx.length<1){toast('Tick the foods to include');return}const its=idx.map(i=>fd[i]).filter(Boolean);addMeal({n:f.n.value.trim()||'My meal',k:its.reduce((a,x)=>a+num(x.k),0),p:Math.round(its.reduce((a,x)=>a+num(x.p),0)*10)/10,items:its.map(x=>x.n)});render();toast('Saved '+(f.n.value.trim()||'meal'))}
   if(f.id==='restore'){try{const o=JSON.parse(f.j.value);if(!o||typeof o!=='object'||!o.days)throw 0;const n=Object.keys(o.days).length;settings=Object.assign(defaults(),o.settings||{});days=Object.assign(days,o.days);persistLocal();render();toast('Restored '+n+' days')}catch(err){toast('That doesn\'t look like a backup')}return}
   if(f.id==='addp'){const v=f.d.value;if(v&&!settings.periods.includes(v)){settings.periods.push(v);saveSettings()}render()}
 });
@@ -496,6 +520,114 @@ document.addEventListener('change',e=>{
   const fr=new FileReader();
   fr.onload=()=>{try{const r=importCron(String(fr.result));render();toast('Imported '+r.items+' '+r.kind+' across '+r.days+' days')}catch(err){toast(err==='format'?'That file isn\'t a Cronometer Servings or Daily Nutrition export':'Couldn\'t read that file')}};
   fr.readAsText(e.target.files[0]);e.target.value='';
+});
+
+/* ---------- barcode scanner + Open Food Facts lookup ---------- */
+let stream=null,zx=null,scanning=false,scanCur=null;
+const smsg=t=>{$('#scanmsg').textContent=t};
+const foods=()=>settings.foods||(settings.foods={});
+function openScan(){$('#scan').hidden=false;$('#scanres').innerHTML='';$('#scanbox').hidden=false;document.body.style.overflow='hidden';startCam()}
+function closeScan(){stopCam();$('#scan').hidden=true;document.body.style.overflow=''}
+function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';sc.onload=ok;sc.onerror=no;document.head.appendChild(sc)})}
+async function startCam(){
+  const v=$('#scanv');smsg('Starting camera…');
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw 0;
+    if('BarcodeDetector' in window){
+      const fm=await BarcodeDetector.getSupportedFormats().catch(()=>[]);
+      if(fm.includes('ean_13')){
+        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+        v.srcObject=stream;await v.play();
+        const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e']});
+        scanning=true;smsg('Point the camera at the barcode');
+        const loop=async()=>{if(!scanning)return;try{const r=await det.detect(v);if(r.length){found(r[0].rawValue);return}}catch(e){}setTimeout(loop,200)};
+        loop();return;
+      }
+    }
+    await loadZX();
+    const hints=new Map();hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E]);
+    zx=new ZXing.BrowserMultiFormatReader(hints);scanning=true;smsg('Point the camera at the barcode');
+    await zx.decodeFromConstraints({video:{facingMode:'environment'}},v,res=>{if(res&&scanning)found(res.getText())});
+  }catch(e){scanning=false;$('#scanbox').hidden=true;smsg('Camera not available. Allow camera access for this app, or type the barcode number below.')}
+}
+function stopCam(){
+  scanning=false;try{zx&&zx.reset()}catch(e){}zx=null;
+  const v=$('#scanv');
+  [stream,v.srcObject].forEach(st=>{try{st&&st.getTracks().forEach(t=>t.stop())}catch(e){}});
+  stream=null;v.srcObject=null;
+}
+function found(code){stopCam();try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}$('#scanbox').hidden=true;lookup(code)}
+async function lookup(code){
+  code=String(code).replace(/\D/g,'');if(!code)return;
+  $('#scanres').innerHTML='';smsg('Looking up '+code+'…');
+  let prod=foods()[code];
+  if(!prod){
+    try{
+      const r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+code+'.json?fields=product_name,brands,nutriments,serving_size,serving_quantity');
+      const j=await r.json();
+      if(j&&j.status===1&&j.product){
+        const pr=j.product,n=pr.nutriments||{};
+        let k=n['energy-kcal_100g'];const kj=n['energy-kj_100g']!=null?n['energy-kj_100g']:n['energy_100g'];
+        if(k==null&&kj!=null)k=kj/4.184;
+        const brand=pr.brands?String(pr.brands).split(',')[0].trim():'';
+        const nm=(pr.product_name||'').trim();
+        prod={name:(nm&&brand&&!nm.toLowerCase().includes(brand.toLowerCase())?brand+' '+nm:nm||brand)||'Product '+code,k100:k!=null&&isFinite(+k)?+k:null,p100:n.proteins_100g!=null&&isFinite(+n.proteins_100g)?+n.proteins_100g:null,serv:+pr.serving_quantity||null,servTxt:pr.serving_size||'',src:'off'};
+      }
+    }catch(e){smsg('Couldn\'t reach the food database. Check your connection, or enter the label below.');showManual(code);return}
+  }
+  if(prod&&prod.k100!=null){foods()[code]=prod;saveSettings();showProduct(code,prod)}
+  else showManual(code,prod);
+}
+function showProduct(code,prod){
+  scanCur={code,prod};
+  const g=prod.serv||100;
+  smsg(prod.src==='off'?'Found in Open Food Facts. Check it against the label.':'From your saved foods.');
+  $('#scanres').innerHTML=`<div class="card"><h2 style="font-family:Figtree,sans-serif;font-size:18px">${esc(prod.name)}</h2>
+   <p class="meta">Per 100 g: ${Math.round(prod.k100)} kcal (${Math.round(prod.k100*4.184)} kJ) · ${prod.p100!=null?(+prod.p100).toFixed(1)+' g protein':'protein unknown'}${prod.servTxt?' · Serving: '+esc(prod.servTxt):''}</p>
+   <label class="f">Amount eaten (g or ml)<input id="amt" inputmode="decimal" value="${g}"></label>
+   <div class="chips" style="margin-top:8px">${prod.serv?`<button class="chip" data-amt="${prod.serv}">1 serving · ${prod.serv} g</button><button class="chip" data-amt="${prod.serv*2}">2 servings</button>`:''}<button class="chip" data-amt="100">100 g</button></div>
+   <p id="calc" style="font-weight:600;margin:12px 0"></p>
+   <div class="row"><button class="btn" data-act="scanadd" style="flex:1">Add to ${cur===today()?'today':fmtDate(cur)}</button><button class="btn ghost" data-act="scanedit">Fix values</button></div>
+   <button class="btn ghost" data-act="scanagain" style="width:100%;margin-top:8px">Scan another</button></div>`;
+  calcAmt();
+}
+function calcAmt(){
+  if(!scanCur)return;const g=num($('#amt').value),pr=scanCur.prod;
+  $('#calc').textContent=`${Math.round(pr.k100*g/100)} kcal · ${pr.p100!=null?(pr.p100*g/100).toFixed(1):'?'} g protein`;
+}
+function showManual(code,pre){
+  pre=pre||{};scanCur={code,prod:null};
+  if(!$('#scanmsg').textContent.startsWith('Couldn'))smsg(pre.name?'Found, but the calories are missing. Enter them from the label once and the app will remember this product.':'Not in the food database yet. Enter the label\'s per-100 g values once and the app will remember this barcode.');
+  $('#scanres').innerHTML=`<form class="card" id="manf"><h2 style="font-family:Figtree,sans-serif;font-size:18px">Barcode ${esc(code)}</h2>
+   <label class="f">Name<input name="n" required value="${esc(pre.name||'')}"></label>
+   <div class="g2" style="margin-top:8px"><label class="f">kJ per 100 g<input name="mkj" inputmode="decimal" value="${pre.k100!=null?Math.round(pre.k100*4.184):''}"></label><label class="f">kcal per 100 g<input name="mk" inputmode="decimal" value="${pre.k100!=null?Math.round(pre.k100):''}"></label>
+   <label class="f">Protein per 100 g<input name="mp" inputmode="decimal" value="${pre.p100!=null?pre.p100:''}"></label><label class="f">Serving size (g)<input name="ms" inputmode="decimal" value="${pre.serv||''}"></label></div>
+   <button class="btn" style="width:100%;margin-top:10px">Save product</button></form>`;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;const a=b.dataset.act;
+  if(a==='scan')openScan();
+  else if(a==='scanclose')closeScan();
+  else if(a==='scanagain'){$('#scanres').innerHTML='';$('#scanbox').hidden=false;startCam()}
+  else if(a==='scanedit'&&scanCur)showManual(scanCur.code,scanCur.prod);
+  else if(a==='scanadd'&&scanCur&&scanCur.prod){
+    const g=num($('#amt').value),pr=scanCur.prod;if(!g){toast('Enter how much you ate');return}
+    const d=day(cur);(d.food||(d.food=[])).push({n:pr.name+' ('+g+' g)',k:Math.round(pr.k100*g/100),p:pr.p100!=null?Math.round(pr.p100*g/10)/10:0,src:'scan'});
+    saveDay(cur);closeScan();render();toast('Added '+pr.name);
+  }
+  else if(b.dataset.amt){$('#amt').value=b.dataset.amt;calcAmt()}
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='amt')calcAmt();
+  if(t.form&&t.form.id==='manf'&&(t.name==='mkj'||t.name==='mk')){const f=t.form,v=num(t.value);if(t.name==='mkj')f.mk.value=t.value.trim()?Math.round(v/4.184):'';else f.mkj.value=t.value.trim()?Math.round(v*4.184):''}
+});
+document.addEventListener('submit',e=>{
+  const f=e.target;
+  if(f.id==='codef'){e.preventDefault();stopCam();$('#scanbox').hidden=true;lookup(f.c.value);f.c.value=''}
+  if(f.id==='manf'){e.preventDefault();if(!scanCur)return;const k=num(f.mk.value);if(!k){toast('Add the kcal or kJ per 100 g');return}
+    const prod={name:f.n.value.trim()||'Product '+scanCur.code,k100:k,p100:f.mp.value.trim()?num(f.mp.value):null,serv:num(f.ms.value)||null,servTxt:f.ms.value.trim()?f.ms.value.trim()+' g':'',src:'mine'};
+    foods()[scanCur.code]=prod;saveSettings();showProduct(scanCur.code,prod);toast('Saved. Next scan finds it straight away')}
 });
 
 render();
