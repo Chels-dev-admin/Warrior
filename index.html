@@ -126,6 +126,12 @@ a{color:var(--goldink)}
 .scanbox{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3;margin:12px 0}
 .scanbox video{width:100%;height:100%;object-fit:cover;display:block}
 .scanframe{position:absolute;left:12%;right:12%;top:32%;bottom:32%;border:3px solid var(--gold);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.res{display:flex;width:100%;text-align:left;gap:10px;align-items:center;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px;color:var(--ink);font:15px Figtree,sans-serif;cursor:pointer;min-height:52px}
+.res span{flex:1}.res small{display:block;color:var(--mute);font-size:13px}
+.src{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--soft);color:var(--mute);white-space:nowrap}
+.ing{display:grid;grid-template-columns:minmax(0,1fr) 84px 36px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.ing small{display:block;color:var(--mute);font-size:13px}
+.big{font-family:Cinzel,serif;font-size:26px}
 .scanhead{display:flex;justify-content:space-between;align-items:center}
 @media(max-width:400px){.ring{width:124px;height:124px}.herogrid{gap:12px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -139,12 +145,14 @@ a{color:var(--goldink)}
   <button data-view="setup">Setup</button>
 </nav>
 <div class="scan" id="scan" hidden><div class="scanin">
-  <div class="scanhead"><h2>Scan a barcode</h2><button class="x" data-act="scanclose" aria-label="Close scanner">×</button></div>
+  <div class="scanhead"><h2 id="scantitle">Find food</h2><button class="x" data-act="scanclose" aria-label="Close scanner">×</button></div>
+  <form id="srch2" class="row" style="margin-top:10px"><input name="q" placeholder="Search foods, e.g. green apple" aria-label="Search foods" style="flex:1" enterkeyhint="search"><button class="btn">Search</button></form>
   <div class="scanbox" id="scanbox"><video id="scanv" playsinline muted autoplay></video><div class="scanframe"></div></div>
   <p id="scanmsg" class="meta">Point the camera at the barcode</p>
   <form id="codef" class="row"><input name="c" inputmode="numeric" placeholder="Or type the barcode number" aria-label="Barcode number" style="flex:1"><button class="btn">Look up</button></form>
   <div id="scanres"></div>
 </div></div>
+<div class="scan" id="rec" hidden><div class="scanin" id="recin"></div></div>
 <div class="toast" id="toast"></div>
 <script>
 {
@@ -345,7 +353,9 @@ function vToday(){
   h+=`<section class="card"><h2>Food</h2><div id="tots">${totsHTML(t,T)}</div>
    ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}${f.src==='cron'?' <small class="meta">· Cronometer</small>':''}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-savefood="${i}" aria-label="Save ${esc(f.n)} to My meals" title="Save to My meals">☆</button><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
    ${(dd.food||[]).length>1?`<details style="margin-top:10px"><summary class="meta" style="cursor:pointer;min-height:32px">Save several of these as one meal</summary><form id="combf" style="margin-top:6px">${dd.food.map((f,i)=>`<label class="li"><input type="checkbox" class="tick" name="c" value="${i}"><span>${esc(f.n)}</span></label>`).join('')}<div class="row" style="margin-top:8px"><input name="n" placeholder="Meal name, e.g. Usual breakfast" aria-label="Meal name" required style="flex:1"><button class="btn">Save meal</button></div></form></details>`:''}
-   <button class="btn" data-act="scan" style="width:100%;margin-top:12px">Scan a barcode</button>
+   <form id="srchf" class="row" style="margin-top:12px"><input name="q" placeholder="Search foods, e.g. green apple" aria-label="Search foods" style="flex:1" enterkeyhint="search"><button class="btn">Search</button></form>
+   <div class="g2" style="margin-top:8px"><button class="btn" data-act="scan">Scan barcode</button><button class="btn ghost" data-act="recipe">Recipe calculator</button></div>
+   ${(settings.recipes||[]).length?`<div class="meta" style="margin:12px 0 6px">My recipes: tap to log a serve</div><div class="chips">${settings.recipes.map((r,i)=>`<button class="chip" data-rlog="${i}">${esc(r.name)}<small>${Math.round(r.k100)} kcal/100g</small></button>`).join('')}</div>`:''}
    ${(settings.meals||[]).length?`<div class="meta" style="margin:12px 0 6px">My meals and snacks: tap to add</div><div class="chips">${settings.meals.map((m,i)=>`<button class="chip" data-mf="${i}">${esc(m.n)}<small>${Math.round(m.k)}/${Math.round(m.p)}g</small></button>`).join('')}</div>`:`<p class="meta" style="margin:12px 0 0">Tap ☆ on any food to save it to My meals, for one-tap logging next time.</p>`}
    <div class="meta" style="margin:12px 0 6px">Plan meals: tap to add</div>
    <div class="chips">${QUICK.map((q,i)=>`<button class="chip" data-qf="${i}">${q[0]}<small>${q[1]}/${q[2]}g</small></button>`).join('')}</div>
@@ -425,6 +435,7 @@ function vSetup(){
    <h3 style="font-size:15px;margin:14px 0 6px">Period start dates</h3>
    ${[...settings.periods].sort().reverse().map(d=>`<div class="food"><span>${fmtDate(d,{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</span><button class="x" data-delp="${d}" aria-label="Remove ${d}">×</button></div>`).join('')||'<p class="empty">None yet.</p>'}
    <form class="row" id="addp" style="margin-top:10px"><input type="date" name="d" required style="flex:1" aria-label="Period start date"><button class="btn">Add</button></form></section>
+  <section class="card"><h2>My recipes</h2>${(settings.recipes||[]).map((r,i)=>`<div class="food"><span>${esc(r.name)}<br><small class="meta">${r.items.length} ingredients${r.serv?' · '+r.serv+' g serving':''}</small></span><em>${Math.round(r.k100)} kcal/100g</em><button class="x" data-redit="${i}" aria-label="Edit ${esc(r.name)}">✎</button></div>`).join('')||'<p class="empty">None yet. Use Recipe calculator on the Today screen.</p>'}<button class="btn ghost" data-act="recipe" style="margin-top:10px">New recipe</button></section>
   <section class="card"><h2>My meals and snacks</h2>${(settings.meals||[]).map((m,i)=>`<div class="food"><span>${esc(m.n)}${m.items?`<br><small class="meta">${esc(m.items.join(', '))}</small>`:''}</span><em>${Math.round(m.k)} kcal · ${Math.round(m.p)} g</em><button class="x" data-delmeal="${i}" aria-label="Delete ${esc(m.n)}">×</button></div>`).join('')||'<p class="empty">None saved yet. On the Today screen, tap ☆ on a food, tick "Also save to My meals" when adding one, or combine several foods into a meal.</p>'}
   ${Object.keys(settings.foods||{}).length?`<p class="meta" style="margin-bottom:0">${Object.keys(settings.foods).length} scanned products remembered for quick re-scanning.</p>`:''}</section>
   <section class="card"><h2>Import from Cronometer</h2>
@@ -526,7 +537,7 @@ document.addEventListener('change',e=>{
 let stream=null,zx=null,scanning=false,scanCur=null;
 const smsg=t=>{$('#scanmsg').textContent=t};
 const foods=()=>settings.foods||(settings.foods={});
-function openScan(){$('#scan').hidden=false;$('#scanres').innerHTML='';$('#scanbox').hidden=false;document.body.style.overflow='hidden';startCam()}
+function openScan(){$('#scantitle').textContent='Scan a barcode';$('#scan').hidden=false;$('#scanres').innerHTML='';$('#scanbox').hidden=false;document.body.style.overflow='hidden';startCam()}
 function closeScan(){stopCam();$('#scan').hidden=true;document.body.style.overflow=''}
 function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';sc.onload=ok;sc.onerror=no;document.head.appendChild(sc)})}
 async function startCam(){
@@ -581,14 +592,14 @@ async function lookup(code){
 function showProduct(code,prod){
   scanCur={code,prod};
   const g=prod.serv||100;
-  smsg(prod.src==='off'?'Found in Open Food Facts. Check it against the label.':'From your saved foods.');
+  smsg(prod.src==='off'||prod.src==='Open Food Facts'?'From Open Food Facts. Check it against the label.':prod.src==='Typical'?'Typical values: a generic average, so close enough for whole foods.':prod.src==='recipe'||prod.src==='Recipe'?'From your recipe.':'From your saved foods.');
   $('#scanres').innerHTML=`<div class="card"><h2 style="font-family:Figtree,sans-serif;font-size:18px">${esc(prod.name)}</h2>
    <p class="meta">Per 100 g: ${Math.round(prod.k100)} kcal (${Math.round(prod.k100*4.184)} kJ) · ${prod.p100!=null?(+prod.p100).toFixed(1)+' g protein':'protein unknown'}${prod.servTxt?' · Serving: '+esc(prod.servTxt):''}</p>
    <label class="f">Amount eaten (g or ml)<input id="amt" inputmode="decimal" value="${g}"></label>
    <div class="chips" style="margin-top:8px">${prod.serv?`<button class="chip" data-amt="${prod.serv}">1 serving · ${prod.serv} g</button><button class="chip" data-amt="${prod.serv*2}">2 servings</button>`:''}<button class="chip" data-amt="100">100 g</button></div>
    <p id="calc" style="font-weight:600;margin:12px 0"></p>
-   <div class="row"><button class="btn" data-act="scanadd" style="flex:1">Add to ${cur===today()?'today':fmtDate(cur)}</button><button class="btn ghost" data-act="scanedit">Fix values</button></div>
-   <button class="btn ghost" data-act="scanagain" style="width:100%;margin-top:8px">Scan another</button></div>`;
+   <div class="row"><button class="btn" data-act="scanadd" style="flex:1">Add to ${cur===today()?'today':fmtDate(cur)}</button>${code?'<button class="btn ghost" data-act="scanedit">Fix values</button>':''}</div>
+   <button class="btn ghost" data-act="scanagain" style="width:100%;margin-top:8px">Scan a barcode</button></div>`;
   calcAmt();
 }
 function calcAmt(){
@@ -608,7 +619,7 @@ document.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const a=b.dataset.act;
   if(a==='scan')openScan();
   else if(a==='scanclose')closeScan();
-  else if(a==='scanagain'){$('#scanres').innerHTML='';$('#scanbox').hidden=false;startCam()}
+  else if(a==='scanagain'){$('#scantitle').textContent='Scan a barcode';$('#scanres').innerHTML='';$('#scanbox').hidden=false;startCam()}
   else if(a==='scanedit'&&scanCur)showManual(scanCur.code,scanCur.prod);
   else if(a==='scanadd'&&scanCur&&scanCur.prod){
     const g=num($('#amt').value),pr=scanCur.prod;if(!g){toast('Enter how much you ate');return}
@@ -628,6 +639,115 @@ document.addEventListener('submit',e=>{
   if(f.id==='manf'){e.preventDefault();if(!scanCur)return;const k=num(f.mk.value);if(!k){toast('Add the kcal or kJ per 100 g');return}
     const prod={name:f.n.value.trim()||'Product '+scanCur.code,k100:k,p100:f.mp.value.trim()?num(f.mp.value):null,serv:num(f.ms.value)||null,servTxt:f.ms.value.trim()?f.ms.value.trim()+' g':'',src:'mine'};
     foods()[scanCur.code]=prod;saveSettings();showProduct(scanCur.code,prod);toast('Saved. Next scan finds it straight away')}
+});
+
+/* ---------- food search (built-in common foods + saved + Open Food Facts) ---------- */
+// Typical values per 100 g (generic averages, USDA/AUSNUT-style). [name, kcal, protein, serve g, serve label, extra search words]
+const COMMON=[
+['Apple, green (Granny Smith)',58,0.4,160,'1 medium'],['Apple, red',52,0.3,160,'1 medium'],['Banana',89,1.1,120,'1 medium'],['Orange',47,0.9,150,'1 medium'],['Mandarin',53,0.8,80,'1 medium'],['Pear',57,0.4,170,'1 medium'],['Strawberries',32,0.7,150,'1 cup'],['Blueberries',57,0.7,150,'1 cup'],['Raspberries',52,1.2,125,'1 punnet'],['Grapes',69,0.7,150,'1 cup'],['Watermelon',30,0.6,280,'1 wedge'],['Rockmelon (cantaloupe)',34,0.8,170,'1 cup'],['Pineapple',50,0.5,165,'1 cup'],['Mango',60,0.8,200,'1 cheek pair'],['Kiwifruit',61,1.1,75,'1 fruit'],['Avocado',160,2,50,'¼ avocado'],['Peach',39,0.9,150,'1 medium'],['Nectarine',44,1.1,140,'1 medium'],['Plum',46,0.7,65,'1 fruit'],['Cherries',63,1.1,140,'1 cup'],['Passionfruit',97,2.2,18,'1 fruit'],['Medjool dates',277,1.8,24,'1 date'],['Sultanas / raisins',299,3.1,30,'small handful'],
+['Broccoli',34,2.8,90,'1 cup'],['Carrot',41,0.9,70,'1 medium'],['Spinach, baby',23,2.9,30,'1 cup'],['Lettuce',15,1.4,50,'1 cup'],['Tomato',18,0.9,120,'1 medium'],['Cherry tomatoes',18,0.9,100,'handful'],['Cucumber',15,0.7,100,'½ cucumber'],['Capsicum, red',31,1,120,'1 medium'],['Potato, boiled',87,1.9,150,'1 medium'],['Sweet potato, baked',90,2,150,'1 medium'],['Pumpkin, roasted',40,1.1,100,'1 piece'],['Zucchini',17,1.2,120,'1 medium'],['Mushrooms',22,3.1,70,'1 cup'],['Onion',40,1.1,110,'1 medium'],['Green beans',31,1.8,100,'1 cup'],['Peas, frozen, cooked',78,5.2,80,'½ cup'],['Corn kernels, cooked',96,3.4,100,'½ cup'],['Cauliflower',25,1.9,100,'1 cup'],['Asparagus',20,2.2,90,'6 spears'],['Kale',49,4.3,30,'1 cup'],['Edamame',121,11.9,75,'½ cup'],['Bok choy',13,1.5,100,'1 cup'],
+['Chicken breast, cooked',165,31,150,'1 serve'],['Chicken breast, raw',120,22.5,150,'1 serve'],['Chicken thigh, skinless, cooked',179,24.8,120,'1 thigh fillet'],['Beef mince, lean, cooked',180,26,120,'1 serve'],['Beef mince, lean, raw',137,21.4,125,'1 serve'],['Turkey mince, raw',150,18.7,125,'1 serve'],['Chicken thigh, skinless, raw',121,19.7,130,'1 thigh fillet'],['Salmon, raw',208,20,150,'1 fillet'],['Beef steak, lean, cooked',190,29,150,'1 steak'],['Lamb, lean, cooked',200,27,120,'1 serve'],['Pork loin, lean, cooked',180,28,120,'1 serve'],['Turkey breast, cooked',147,30,120,'1 serve'],['Kangaroo fillet, raw',98,22,150,'1 serve','roo'],['Salmon, cooked',206,22,150,'1 fillet'],['White fish, cooked (e.g. barramundi)',110,23,150,'1 fillet','fish'],['Tuna, canned in springwater, drained',116,25.5,95,'1 small can'],['Prawns, cooked',99,24,100,'1 serve','shrimp'],['Egg, whole',143,12.6,50,'1 large egg','eggs'],['Egg white',52,10.9,33,'1 egg white'],['Tofu, firm',144,17.3,100,'1 serve'],['Tempeh',192,20.3,100,'1 serve'],['Lentils, cooked',116,9,100,'½ cup'],['Chickpeas, cooked or canned',164,8.9,100,'½ cup'],['Black beans, cooked',132,8.9,100,'½ cup'],['Kidney beans, canned, drained',127,8.7,100,'½ cup'],
+['Greek yoghurt, plain, non-fat',59,10.3,170,'1 tub','yogurt'],['Greek yoghurt, plain, full fat',97,9,170,'1 tub','yogurt'],['Milk, full cream',64,3.3,250,'1 cup'],['Milk, skim',35,3.4,250,'1 cup'],['Cottage cheese, low fat',72,12.4,100,'½ cup'],['Cheddar cheese',403,24.9,20,'1 slice'],['Feta',264,14.2,30,'1 serve'],['Mozzarella, light',254,24.3,30,'1 serve'],['Almond milk, unsweetened',15,0.6,250,'1 cup'],['Soy milk',54,3.3,250,'1 cup'],['Whey protein powder (typical)',400,78,30,'1 scoop','protein shake'],
+['White rice, cooked',130,2.7,180,'1 cup'],['Brown rice, cooked',123,2.7,180,'1 cup'],['Pasta, cooked',158,5.8,180,'1 cup'],['Pasta, dry',371,13,75,'1 serve'],['White rice, raw',365,7.1,60,'¼ cup'],['Lentils, dry',352,24.6,50,'¼ cup'],['Passata / tomato puree',33,1.5,125,'½ cup'],['Rolled oats, dry',379,13.2,40,'½ cup','porridge'],['Quinoa, cooked',120,4.4,180,'1 cup'],['Couscous, cooked',112,3.8,160,'1 cup'],['Bread, white',265,9,36,'1 slice'],['Bread, wholemeal',250,12,36,'1 slice'],['Sourdough bread',274,10,50,'1 slice'],['Wrap / tortilla',310,8.5,45,'1 wrap'],['Rice cakes',387,8,9,'1 cake'],['Weet-Bix (wheat biscuits)',352,12,33,'2 biscuits','weetbix'],['Popcorn, air-popped',387,12.9,20,'2 cups'],
+['Olive oil',884,0,14,'1 tbsp'],['Butter',717,0.9,10,'1 tsp pat'],['Peanut butter',588,25,20,'1 tbsp'],['Almonds',579,21.2,30,'small handful','nuts'],['Walnuts',654,15.2,30,'small handful','nuts'],['Cashews',553,18.2,30,'small handful','nuts'],['Chia seeds',486,16.5,15,'1 tbsp'],['Dark chocolate 70–85%',598,7.8,20,'2 squares'],['Honey',304,0.3,21,'1 tbsp'],['Hummus',166,7.9,30,'2 tbsp'],['Orange juice',45,0.7,250,'1 cup'],['Red wine',85,0.1,150,'1 glass'],['White wine',82,0.1,150,'1 glass']
+];
+let lastRes=[];
+function matchQ(q,txt){const w=q.toLowerCase().split(/\s+/).filter(Boolean);txt=txt.toLowerCase();return w.length&&w.every(x=>txt.includes(x.replace(/s$/,'')))}
+function localSearch(q){
+  const out=[];
+  (settings.recipes||[]).forEach((r,i)=>{if(matchQ(q,r.name))out.push({name:r.name,k100:r.k100,p100:r.p100,serv:r.serv,servTxt:r.serv?'1 serving':'',src:'Recipe'})});
+  Object.entries(settings.foods||{}).forEach(([c,f])=>{if(f.k100!=null&&matchQ(q,f.name))out.push({...f,code:c,src:'Saved'})});
+  COMMON.forEach(c=>{if(matchQ(q,c[0]+' '+(c[5]||'')))out.push({name:c[0],k100:c[1],p100:c[2],serv:c[3],servTxt:c[4]+' ≈ '+c[3]+' g',src:'Typical'})});
+  return out;
+}
+async function offSearch(q){
+  const u='https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(q)+'&search_simple=1&action=process&json=1&page_size=24&fields=code,product_name,brands,nutriments,serving_quantity,serving_size,countries_tags';
+  const r=await fetch(u);const j=await r.json();
+  return (j.products||[]).map(pr=>{const n=pr.nutriments||{};let k=n['energy-kcal_100g'];const kj=n['energy-kj_100g']!=null?n['energy-kj_100g']:n['energy_100g'];if(k==null&&kj!=null)k=kj/4.184;
+    const brand=pr.brands?String(pr.brands).split(',')[0].trim():'',nm=(pr.product_name||'').trim();
+    return {name:(nm&&brand&&!nm.toLowerCase().includes(brand.toLowerCase())?brand+' '+nm:nm||brand),k100:k!=null&&isFinite(+k)?+k:null,p100:n.proteins_100g!=null&&isFinite(+n.proteins_100g)?+n.proteins_100g:null,serv:+pr.serving_quantity||null,servTxt:pr.serving_size||'',code:pr.code,src:'Open Food Facts',au:(pr.countries_tags||[]).includes('en:australia')}})
+   .filter(x=>x.name&&x.k100!=null).sort((a,b)=>(b.au?1:0)-(a.au?1:0));
+}
+function resRows(list,act){return list.map((r,i)=>`<button class="res" data-${act}="${i}"><span>${esc(r.name)}<small>Per 100 g: ${Math.round(r.k100)} kcal · ${r.p100!=null?(+r.p100).toFixed(1)+' g protein':'protein ?'}${r.servTxt?' · '+esc(r.servTxt):''}</small></span><em class="src">${r.au?'AU · ':''}${r.src}</em></button>`).join('')}
+async function runSearch(q,target,act,onDone){
+  q=(q||'').trim();if(!q)return;
+  const loc=localSearch(q);lastRes=loc.slice();
+  const el=$(target);
+  el.innerHTML=(loc.length?resRows(loc,act):'')+'<p class="meta" id="offst">Searching packaged products…</p>';
+  try{const off=await offSearch(q);lastRes=loc.concat(off);el.innerHTML=lastRes.length?resRows(lastRes,act)+'<p class="meta">"Typical" values are generic averages. Packaged products come from Open Food Facts, filled in by volunteers, so check them against the label.</p>':'<p class="empty">No matches. Try fewer words, or enter the label values yourself.</p>'}
+  catch(e){const st=document.getElementById('offst');if(st)st.textContent=loc.length?'Couldn\'t reach Open Food Facts, so packaged products aren\'t shown.':'No built-in match, and Open Food Facts can\'t be reached right now.'}
+  onDone&&onDone();
+}
+function openFind(q){
+  $('#scan').hidden=false;document.body.style.overflow='hidden';$('#scantitle').textContent='Find food';$('#scanbox').hidden=true;smsg('');$('#scanres').innerHTML='';
+  if(q){$('#srch2').q.value=q;runSearch(q,'#scanres','pick')}else setTimeout(()=>$('#srch2').q.focus(),50);
+}
+
+/* ---------- recipe calculator ---------- */
+let rec=null;
+function newRec(){return {name:'',items:[],cooked:'',servings:'',idx:null}}
+function recTotals(){const t=rec.items.reduce((a,x)=>({k:a.k+x.k100*num(x.g)/100,p:a.p+(x.p100||0)*num(x.g)/100,g:a.g+num(x.g)}),{k:0,p:0,g:0});return t}
+function openRec(r,idx){rec=r?JSON.parse(JSON.stringify(r)):newRec();if(idx!=null)rec.idx=idx;$('#rec').hidden=false;document.body.style.overflow='hidden';drawRec()}
+function closeRec(){$('#rec').hidden=true;document.body.style.overflow='';rec=null}
+function drawRec(){
+  const t=recTotals(),cooked=num(rec.cooked)||t.g,sv=num(rec.servings);
+  $('#recin').innerHTML=`<div class="scanhead"><h2>Recipe calculator</h2><button class="x" data-act="recclose" aria-label="Close">×</button></div>
+  <label class="f" style="margin-top:10px">Recipe name<input id="rname" value="${esc(rec.name)}" placeholder="e.g. Turkey bolognese"></label>
+  <div class="card"><h2 style="font-size:16px">Ingredients <span class="meta" style="font-family:Figtree,sans-serif">(raw weights)</span></h2>
+  ${rec.items.map((x,i)=>`<div class="ing"><div>${esc(x.n)}<small>${Math.round(x.k100*num(x.g)/100)} kcal · ${((x.p100||0)*num(x.g)/100).toFixed(1)} g protein</small></div><input inputmode="decimal" data-rg="${i}" value="${esc(x.g)}" aria-label="${esc(x.n)} grams"><button class="x" data-rdel="${i}" aria-label="Remove ${esc(x.n)}">×</button></div>`).join('')||'<p class="empty">Search below to add each ingredient, then set its weight in grams.</p>'}
+  <form id="rsrch" class="row" style="margin-top:10px"><input name="q" placeholder="Add ingredient: search, e.g. lean mince" style="flex:1" enterkeyhint="search" aria-label="Search ingredient"><button class="btn">Search</button></form>
+  <div id="rres"></div>
+  <details style="margin-top:8px"><summary class="meta" style="cursor:pointer;min-height:32px">Enter an ingredient from its label</summary>
+   <form id="rman" style="margin-top:6px"><input name="n" placeholder="Ingredient name" required>
+   <div class="g2" style="margin-top:8px"><label class="f">Grams used<input name="g" inputmode="decimal" required></label><label class="f">Protein per 100 g<input name="p" inputmode="decimal"></label><label class="f">kJ per 100 g<input name="kj" inputmode="decimal"></label><label class="f">kcal per 100 g<input name="k" inputmode="decimal"></label></div>
+   <button class="btn ghost" style="width:100%;margin-top:8px">Add ingredient</button></form></details></div>
+  <div class="card"><h2 style="font-size:16px">The finished dish</h2>
+   <div class="g2"><label class="f">Cooked weight (g)<input id="rcook" inputmode="decimal" value="${esc(rec.cooked)}" placeholder="${Math.round(t.g)||''}"></label><label class="f">Servings it makes<input id="rserv" inputmode="numeric" value="${esc(rec.servings)}" placeholder="optional"></label></div>
+   <p class="meta">Weigh the pot full, then subtract the empty pot's weight. Left blank, the raw total is used.</p>
+   <div id="rout">${recOut(t,cooked,sv)}</div>
+   <button class="btn" data-act="recsave" style="width:100%;margin-top:10px">${rec.idx!=null?'Update recipe':'Save recipe'}</button>
+   ${rec.idx!=null?'<button class="btn ghost" data-act="recdelete" style="width:100%;margin-top:8px">Delete recipe</button>':''}</div>`;
+}
+function recOut(t,cooked,sv){
+  if(!rec.items.length)return '<p class="empty">Totals appear once you add ingredients.</p>';
+  const k100=cooked?t.k/cooked*100:0,p100=cooked?t.p/cooked*100:0;
+  return `<div class="tot"><span>Whole dish</span><b>${Math.round(t.k)} kcal · ${Math.round(t.p)} g protein</b></div>
+  <div class="tot" style="margin-top:6px"><span>Per 100 g cooked</span><b class="big">${Math.round(k100)}<small style="font:600 14px Figtree"> kcal · ${p100.toFixed(1)} g</small></b></div>
+  ${sv?`<div class="tot" style="margin-top:6px"><span>Per serving (${Math.round(cooked/sv)} g)</span><b>${Math.round(t.k/sv)} kcal · ${(t.p/sv).toFixed(1)} g protein</b></div>`:''}`;
+}
+function refreshRecOut(){if(!rec)return;const t=recTotals(),cooked=num(rec.cooked)||t.g;$('#rout').innerHTML=recOut(t,cooked,num(rec.servings))}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;const ds=b.dataset,a=ds.act;
+  if(ds.pick!=null){const r=lastRes[+ds.pick];if(r)showProduct(r.code||'',r);return}
+  if(ds.rpick!=null){const r=lastRes[+ds.rpick];if(r&&rec){rec.items.push({n:r.name,g:r.serv||100,k100:r.k100,p100:r.p100});drawRec();toast('Added '+r.name+'. Set the grams you used')}return}
+  if(ds.rdel!=null&&rec){rec.items.splice(+ds.rdel,1);drawRec();return}
+  if(ds.rlog!=null){const r=(settings.recipes||[])[+ds.rlog];if(r){$('#scan').hidden=false;document.body.style.overflow='hidden';$('#scantitle').textContent='Log a serve';$('#scanbox').hidden=true;smsg('');showProduct('',{name:r.name,k100:r.k100,p100:r.p100,serv:r.serv,servTxt:r.serv?'1 serving = '+r.serv+' g':'',src:'recipe'})}return}
+  if(ds.redit!=null){const r=(settings.recipes||[])[+ds.redit];if(r)openRec(r,+ds.redit);return}
+  if(a==='recipe')openRec();
+  else if(a==='recclose')closeRec();
+  else if(a==='recsave'&&rec){
+    const t=recTotals();if(!rec.items.length){toast('Add at least one ingredient');return}
+    const name=(rec.name||'').trim()||'My recipe',cooked=num(rec.cooked)||t.g,sv=num(rec.servings);
+    const r={name,k100:Math.round(t.k/cooked*1000)/10,p100:Math.round(t.p/cooked*1000)/10,serv:sv?Math.round(cooked/sv):null,cooked:rec.cooked,servings:rec.servings,items:rec.items};
+    const L=settings.recipes||(settings.recipes=[]);if(rec.idx!=null)L[rec.idx]=r;else L.push(r);saveSettings();closeRec();render();toast('Saved '+name+'. Tap it under My recipes to log a serve');
+  }
+  else if(a==='recdelete'&&rec&&rec.idx!=null){settings.recipes.splice(rec.idx,1);saveSettings();closeRec();render();toast('Recipe deleted')}
+});
+document.addEventListener('input',e=>{
+  const t=e.target;if(!rec)return;
+  if(t.id==='rname')rec.name=t.value;
+  else if(t.id==='rcook'){rec.cooked=t.value;refreshRecOut()}
+  else if(t.id==='rserv'){rec.servings=t.value;refreshRecOut()}
+  else if(t.dataset.rg!=null){rec.items[+t.dataset.rg].g=t.value;const row=t.closest('.ing').querySelector('small'),x=rec.items[+t.dataset.rg];row.textContent=Math.round(x.k100*num(x.g)/100)+' kcal · '+((x.p100||0)*num(x.g)/100).toFixed(1)+' g protein';refreshRecOut()}
+  else if(t.form&&t.form.id==='rman'&&(t.name==='kj'||t.name==='k')){const f=t.form,v=num(t.value);if(t.name==='kj')f.k.value=t.value.trim()?Math.round(v/4.184):'';else f.kj.value=t.value.trim()?Math.round(v*4.184):''}
+});
+document.addEventListener('submit',e=>{
+  const f=e.target;
+  if(f.id==='srchf'){e.preventDefault();openFind(f.q.value);f.q.value=''}
+  else if(f.id==='srch2'){e.preventDefault();stopCam();$('#scanbox').hidden=true;smsg('');runSearch(f.q.value,'#scanres','pick')}
+  else if(f.id==='rsrch'){e.preventDefault();runSearch(f.q.value,'#rres','rpick')}
+  else if(f.id==='rman'){e.preventDefault();const k=num(f.k.value);if(!k||!num(f.g.value)){toast('Add grams and kcal or kJ per 100 g');return}rec.items.push({n:f.n.value.trim(),g:f.g.value,k100:k,p100:num(f.p.value)});drawRec()}
 });
 
 render();
