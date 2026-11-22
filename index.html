@@ -328,7 +328,7 @@ function vToday(){
   // food
   const t=foodTot(cur);
   h+=`<section class="card"><h2>Food</h2><div id="tots">${totsHTML(t,T)}</div>
-   ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
+   ${(dd.food||[]).map((f,i)=>`<div class="food"><span>${esc(f.n)}${f.src==='cron'?' <small class="meta">· Cronometer</small>':''}</span><em>${num(f.k)} kcal · ${num(f.p)} g</em><button class="x" data-delfood="${i}" aria-label="Remove ${esc(f.n)}">×</button></div>`).join('')||'<p class="empty">Nothing logged yet. Tap a plan meal or add your own.</p>'}
    <div class="meta" style="margin:12px 0 6px">Plan meals: tap to add</div>
    <div class="chips">${QUICK.map((q,i)=>`<button class="chip" data-qf="${i}">${q[0]}<small>${q[1]}/${q[2]}g</small></button>`).join('')}</div>
    <form class="addf" id="addf"><input name="n" placeholder="Food" aria-label="Food name" required style="grid-column:1/-1"><label class="f">kJ<input name="kj" inputmode="decimal" aria-label="Energy in kilojoules"></label><label class="f">kcal<input name="k" inputmode="decimal" aria-label="Calories"></label><label class="f">Protein g<input name="p" inputmode="decimal" aria-label="Protein grams"></label><p class="meta" style="grid-column:1/-1;margin:0">Type kJ from an Australian label and kcal fills in (kJ ÷ 4.184), or the other way round.</p><button class="btn" style="grid-column:1/-1">Add food</button></form></section>`;
@@ -407,6 +407,10 @@ function vSetup(){
    <h3 style="font-size:15px;margin:14px 0 6px">Period start dates</h3>
    ${[...settings.periods].sort().reverse().map(d=>`<div class="food"><span>${fmtDate(d,{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</span><button class="x" data-delp="${d}" aria-label="Remove ${d}">×</button></div>`).join('')||'<p class="empty">None yet.</p>'}
    <form class="row" id="addp" style="margin-top:10px"><input type="date" name="d" required style="flex:1" aria-label="Period start date"><button class="btn">Add</button></form></section>
+  <section class="card"><h2>Import from Cronometer</h2>
+  <p>On the Cronometer <b>website</b> (export isn't in its app), go to Settings &rarr; Account &rarr; Export Data, choose a date range, then <b>Export Servings</b> (each food) or <b>Daily Nutrition</b> (daily totals). Pick the downloaded file here.</p>
+  <label class="btn ghost" style="display:inline-flex;align-items:center">Choose CSV file<input type="file" id="cronfile" accept=".csv,text/csv" style="display:none"></label>
+  <p class="meta" style="margin-bottom:0">Re-importing the same days replaces the earlier Cronometer entries, so nothing doubles up. Foods you typed in yourself are kept.</p></section>
   <section class="card"><h2>Your data</h2><p>${syncNote}</p><div class="row"><button class="btn ghost" data-act="copy">Copy backup</button><button class="btn ghost" data-act="dl">Download backup</button></div>
   <h3 style="font-size:15px;margin:14px 0 6px">Restore</h3>
   <form id="restore"><textarea name="j" placeholder="Paste a backup here (from this app or the claude.ai version)" aria-label="Backup to restore"></textarea><button class="btn" style="margin-top:8px">Restore backup</button></form>
@@ -451,6 +455,47 @@ document.addEventListener('submit',e=>{
   if(f.id==='addf'){const n=f.n.value.trim();if(!n)return;const d=day(cur);(d.food||(d.food=[])).push({n,k:num(f.k.value),p:num(f.p.value)});saveDay(cur);render();toast('Added '+n)}
   if(f.id==='restore'){try{const o=JSON.parse(f.j.value);if(!o||typeof o!=='object'||!o.days)throw 0;const n=Object.keys(o.days).length;settings=Object.assign(defaults(),o.settings||{});days=Object.assign(days,o.days);persistLocal();render();toast('Restored '+n+' days')}catch(err){toast('That doesn\'t look like a backup')}return}
   if(f.id==='addp'){const v=f.d.value;if(v&&!settings.periods.includes(v)){settings.periods.push(v);saveSettings()}render()}
+});
+
+/* ---------- Cronometer CSV import ---------- */
+function parseCSV(t){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c==='"')q=true;else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;row.push(f);f='';if(row.length>1||row[0]!=='')rows.push(row);row=[]}
+    else f+=c}
+  if(f!==''||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+function toISO(v){
+  v=(v||'').trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return m[1]+'-'+pad(+m[2])+'-'+pad(+m[3]);
+  m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); // Cronometer exports US-style M/D/YYYY
+  if(m)return m[3]+'-'+pad(+m[1])+'-'+pad(+m[2]);
+  return null;
+}
+function importCron(text){
+  const rows=parseCSV(text.replace(/^﻿/,''));if(rows.length<2)throw 'empty';
+  const h=rows[0].map(x=>x.trim().toLowerCase());
+  const col=(...names)=>{for(const n of names){const i=h.findIndex(x=>x===n||x.startsWith(n));if(i>=0)return i}return -1};
+  const iD=col('day','date'),iK=col('energy (kcal)','calories'),iP=col('protein (g)','protein'),iN=col('food name','food'),iA=col('amount'),iKJ=col('energy (kj)');
+  if(iD<0||(iK<0&&iKJ<0))throw 'format';
+  const isServ=iN>=0,byDay={};
+  for(const r of rows.slice(1)){
+    const d=toISO(r[iD]);if(!d)continue;
+    const k=iK>=0?num(r[iK]):num(r[iKJ])/4.184,pr=iP>=0?num(r[iP]):0;
+    (byDay[d]||(byDay[d]=[])).push(isServ?{n:(r[iN]||'Food').trim()+(iA>=0&&r[iA]?' ('+r[iA].trim()+')':''),k:Math.round(k),p:Math.round(pr*10)/10,src:'cron'}:{n:'Cronometer daily total',k:Math.round(k),p:Math.round(pr*10)/10,src:'cron'});
+  }
+  const ds=Object.keys(byDay);
+  ds.forEach(d=>{const dd=day(d);dd.food=(dd.food||[]).filter(f=>f.src!=='cron').concat(byDay[d]);saveDay(d)});
+  return {days:ds.length,items:ds.reduce((a,d)=>a+byDay[d].length,0),kind:isServ?'foods':'daily totals'};
+}
+document.addEventListener('change',e=>{
+  if(e.target.id!=='cronfile'||!e.target.files[0])return;
+  const fr=new FileReader();
+  fr.onload=()=>{try{const r=importCron(String(fr.result));render();toast('Imported '+r.items+' '+r.kind+' across '+r.days+' days')}catch(err){toast(err==='format'?'That file isn\'t a Cronometer Servings or Daily Nutrition export':'Couldn\'t read that file')}};
+  fr.readAsText(e.target.files[0]);e.target.value='';
 });
 
 render();
