@@ -47,6 +47,13 @@ h2{font-size:19px;letter-spacing:.02em}
 .sess{margin-top:16px;font-size:clamp(26px,7vw,34px)}
 .sess small{display:block;font-family:Figtree,sans-serif;font-size:14px;opacity:.8;margin-top:6px;letter-spacing:0}
 .hbtn{margin-top:10px;background:var(--gold);color:#2a1a00;border:0;border-radius:22px;padding:0 16px;min-height:40px;font:600 14px Figtree,sans-serif;cursor:pointer}
+.left{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}
+.left>div{background:rgba(255,255,255,.1);border-radius:14px;padding:10px 14px}
+.left b{display:block;font-family:Cinzel,serif;font-size:clamp(26px,8vw,34px);line-height:1.1;color:var(--gold)}
+.left b.over{color:#ff9aa8}
+.left span{font-size:13px;opacity:.85}
+.leftline{font-size:15px;margin-bottom:8px}
+.leftline b{font-size:18px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:14px}
 .card h2{margin-bottom:10px}
 .call{border-left:0;position:relative}
@@ -312,6 +319,7 @@ function vToday(){
    <div class="k">Cycle</div><div class="v">${cycTxt}</div>
    <button class="hbtn" data-act="period">${isPeriodStart?'Undo period start':'Period started this day'}</button></div></div>
    <h1 class="sess">${S.code?S.code+': ':''}${S.name}<small>${S.sub}</small></h1>
+   ${(()=>{const L=leftTxt(foodTot(cur),T);return `<div class="left" role="group" aria-label="Food left today"><div><b class="${L.k<0?'over':''}">${L.kl}</b><span>${L.ks}</span></div><div><b>${L.pl}</b><span>${L.ps}</span></div></div>`})()}
   </div></header><main class="wrap">`;
   // guidance
   const ph=ci&&!settings.hormonal?PH[ci.phase]:null;
@@ -366,9 +374,10 @@ function vToday(){
    </div><p class="meta" style="margin-bottom:0">Weigh in 3 mornings a week. Compare averages within the same cycle phase.</p></section></main>`;
   return h;
 }
-function totsHTML(t,T){
+function leftTxt(t,T){const k=Math.round(T.kcal-t.k),p=Math.round(T.protein-t.p);return {k,p,kl:k>=0?k.toLocaleString():Math.abs(k).toLocaleString(),ks:k>=0?'kcal left':'kcal over target',pl:p>0?p+' g':'Done',ps:p>0?'protein to go':'protein target hit'}}
+function totsHTML(t,T){const L=leftTxt(t,T);
   const bar=(v,m)=>`<div class="bar"><i class="${v>m*1.05?'over':''}" style="width:${Math.min(100,v/m*100).toFixed(0)}%"></i></div>`;
-  return `<div class="tot"><span>Calories</span><b>${Math.round(t.k)} / ${T.kcal}</b></div>${bar(t.k,T.kcal)}<div class="tot"><span>Protein</span><b>${Math.round(t.p)} / ${T.protein} g</b></div>${bar(t.p,T.protein)}`;
+  return `<p class="leftline"><b>${L.kl}</b> ${L.ks} · <b>${L.pl}</b> ${L.ps}</p><div class="tot"><span>Calories</span><b>${Math.round(t.k)} / ${T.kcal}</b></div>${bar(t.k,T.kcal)}<div class="tot"><span>Protein</span><b>${Math.round(t.p)} / ${T.protein} g</b></div>${bar(t.p,T.protein)}`;
 }
 function spark(pts){
   if(pts.length<2)return '';
